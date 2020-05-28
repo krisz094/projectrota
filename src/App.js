@@ -1,5 +1,16 @@
 import React, { useState, useEffect, useDebugValue } from 'react';
-import logo from './logo.svg';
+import boarImg from './mobs/boar.jpg';
+import brownBearImg from './mobs/brownbear.jpg';
+import catImg from './mobs/cat.jpg';
+import greenWolfImg from './mobs/greenwolf.jpg';
+import greyWolfImg from './mobs/greywolf.jpg';
+
+import foxImg from './mobs/fox.jpg';
+import rayImg from './mobs/ray.jpg';
+import mechaImg from './mobs/mecha.jpg';
+import lizardImg from './mobs/lizard.jpg';
+import spiderImg from './mobs/spider.jpg';
+
 import './App.css';
 
 function clamp(val, min, max) {
@@ -37,7 +48,7 @@ const spells = [
     id: 3,
     cost: 40,
     damage: 18,
-    cooldown: 1.5,
+    cooldown: 0,
     maxCharges: 1,
     name: 'Fireball',
     castTime: 1.5,
@@ -74,11 +85,85 @@ const hotkeys = [
   1, 2, 3, 4
 ];
 
+const mobs = [
+  {
+    id: 1,
+    name: "Boar",
+    hp: 120,
+    imageURI: boarImg,
+    level: 1
+  },
+  {
+    id: 2,
+    name: "Bear",
+    hp: 200,
+    imageURI: brownBearImg,
+    level: 2
+  },
+  {
+    id: 3,
+    name: "Tiger",
+    hp: 280,
+    imageURI: catImg,
+    level: 3
+  },
+  {
+    id: 4,
+    name: "Wolf",
+    hp: 320,
+    imageURI: greyWolfImg,
+    level: 4
+  },
+  {
+    id: 5,
+    name: "Advanced Wolf",
+    hp: 400,
+    imageURI: greenWolfImg,
+    level: 5
+  },
+  {
+    id: 6,
+    name: "Spider",
+    hp: 500,
+    imageURI: spiderImg,
+    level: 6
+  },
+  {
+    id: 7,
+    name: "Mechanical Tiger",
+    hp: 560,
+    imageURI: mechaImg,
+    level: 7
+  },
+  {
+    id: 8,
+    name: "Lizard",
+    hp: 620,
+    imageURI: lizardImg,
+    level: 8
+  },
+  {
+    id: 9,
+    name: "Fox",
+    hp: 680,
+    imageURI: foxImg,
+    level: 9
+  },
+  {
+    id: 10,
+    name: "Fathom Ray",
+    hp: 740,
+    imageURI: rayImg,
+    level: 10
+  },
+];
+
 function App() {
   const incVal = 12;
   const maxEnergy = 120;
   const FPS = 60;
   const frameTime = 1000 / FPS;
+  const maxGCD = 1.5;
 
   const [autoAttack, setAutoAttack] = useState(4);
   const [energy, setEnergy] = useState(maxEnergy);
@@ -91,6 +176,24 @@ function App() {
   const [last10SecAttacks, setLast10SecAttacks] = useState([]);
   const [playerXP, setPlayerXP] = useState(0);
   const [playerLevel, setPlayerLevel] = useState(1);
+  const [GCD, setGCD] = useState(0);
+  const [currMob, setCurrMob] = useState(null);
+
+  const critChance = 20 + playerLevel * 2;
+
+
+  function putNewRandomMob() {
+    let availables = mobs.filter(mob => mob.level >= playerLevel - 3 && mob.level <= playerLevel + 2);
+    if (availables.length == 0) {
+      availables = mobs;
+    }
+    const mob = availables[getRndInteger(0, availables.length)];
+    setMobMaxHp(mob.hp);
+    setMobHp(mob.hp);
+    setMobXP(Math.max(80 + (mob.level) * 40 - playerLevel * 20, 0));
+    setMobAlive(true);
+    setCurrMob(mob);
+  }
 
   useEffect(() => {
 
@@ -114,8 +217,21 @@ function App() {
       setPlayerLevel(+loadlevel);
     }
 
+    const cds = {};
+    spells.forEach(spell => {
+      cds[spell.id] = 0;
+    })
+
+    setCooldowns(cds);
+
     const interval = setInterval(() => {
       decrementCooldownsBy(1 / FPS);
+      setGCD(gcd => {
+        if (gcd <= 0) {
+          return 0;
+        }
+        else return gcd - 1 / FPS;
+      });
       setEnergy(energy => clamp(energy + incVal / FPS, 0, maxEnergy));
       setLast10SecAttacks(lasts => {
         const allowed = +new Date() - 10000;
@@ -133,17 +249,18 @@ function App() {
           elem.click();
         }
       }
-    })
+    });
+
+    putNewRandomMob();
 
     return () => { clearInterval(interval); }
   }, []);
 
   useEffect(() => {
     if (!mobAlive) {
-      setCopper(copper => +copper + 1);
+      setCopper(copper => copper + getRndInteger(5, 80));
       setTimeout(() => {
-        setMobHp(mobMaxHp);
-        setMobAlive(true);
+        putNewRandomMob();
       }, 1000)
     }
   }, [mobAlive]);
@@ -247,11 +364,13 @@ function App() {
     return Math.floor(Math.floor(Math.random() * (max - min)) + min);
   }
 
-  function onSpellClick(spell) {
-    let spellDmg = Math.floor(getRndInteger(spell.damage * 0.8, spell.damage * 1.2) * (1 + playerLevel / 5));
+  function castSpell(spell) {
+    setGCD(maxGCD);
+
+    let spellDmg = Math.floor(getRndInteger(spell.damage * 0.8, spell.damage * 1.2) * (1 + playerLevel / 4));
 
     let isCrit = false;
-    if (getRndInteger(0, 100) < 20) {
+    if (getRndInteger(0, 100) < critChance) {
       spellDmg *= 2;
       isCrit = true;
     }
@@ -263,26 +382,32 @@ function App() {
   return (
     <div className="App">
 
-      <h1>DPS: {getDps()}</h1>
+      <div style={{ fontSize: 30, fontWeight: 800 }}>DPS: {getDps()}</div>
       <hr></hr>
       <div id="imgcont">
-        <img
+        {currMob && <img
+          className="mob-img"
           style={!mobAlive ? { filter: 'grayscale(100%)' } : null}
-          src="https://gamepedia.cursecdn.com/wowpedia/9/96/Fleshbeast.png?version=40dcf19129cb38d65b515b18a8900287"></img>
+          src={currMob.imageURI}></img>}
+
         {last10SecAttacks.map(attack =>
-          <span class="attack-text" style={{ top: 200 - attack.y, fontSize: attack.isCrit ? 40 : null }}>{attack.dmg}</span>
+          <span key={attack.timestamp} className="attack-text" style={{
+            top: 300 - attack.y,
+            fontSize: attack.isCrit ? 50 : null,
+            color: attack.isCrit ? "darkorange" : null
+          }}>{attack.dmg}</span>
         )}
       </div>
 
       <div>
-        <div>Enemy HP</div>
-        <div><progress value={mobHp} max={mobMaxHp} style={{ backgroundColor: "red" }}></progress></div>
+        <div style={{ fontSize: 30 }}>{currMob && currMob.name} (Lv.{currMob && currMob.level})</div>
+        <div><progress id="progress-mobhp" value={mobHp} max={mobMaxHp} ></progress></div>
         <div>{mobHp}/{mobMaxHp}</div>
       </div>
       <hr></hr>
       <div>
         <div>Mana</div>
-        <div><progress value={energy} max={maxEnergy}></progress></div>
+        <div><progress id="progress-mana" value={energy} max={maxEnergy}></progress></div>
       </div>
 
       <div>{Math.round(energy)}</div>
@@ -299,30 +424,44 @@ function App() {
         key={spell.id}
         id={"spell_" + hotkeys[idx]}
         className="spell-btn"
-        onClick={(cooldowns[spell.id] > 0 || !mobAlive || energy < spell.cost) ? null : () => { onSpellClick(spell) }}
+        onClick={(GCD > 0 || cooldowns[spell.id] > 0 || !mobAlive || energy < spell.cost) ? null : () => { castSpell(spell) }}
         style={{ backgroundImage: `url(${spell.iconURI})`, filter: energy < spell.cost ? 'saturate(0.18)' : null }}
       >
 
-        {cooldowns[spell.id] > 0 && <span class="spell-cooldown" style={{
+        {(cooldowns[spell.id] > 0 || GCD > 0) && <div className="spell-cooldown-overlay" style={{
+          position: "absolute",
+          left: 0,
+          right: 0,
+          bottom: 0,
+          top: 60 - (GCD > cooldowns[spell.id] ? GCD / maxGCD : cooldowns[spell.id] / spell.cooldown) * 60,
+          background: "black",
+          opacity: 0.5
+        }}>
+        </div>}
+
+        {cooldowns[spell.id] > 0 && <span className="spell-cooldown-text" style={{
           fontSize: cooldowns[spell.id] > 2 ? '20px' : null
         }}>{Math.ceil(cooldowns[spell.id] * 10) / 10}</span>}
-        <span class="spell-hotkey">{hotkeys[idx]}</span>
+
+
+
+        <span className="spell-hotkey">{hotkeys[idx]}</span>
       </div>)
       }
 
       <div>
-        Inventory: {stringFromCopper(copper)}
+        <b>Money</b>: {stringFromCopper(copper)} | <b>Crit chance</b>: {critChance}%
       </div>
-
+      <hr></hr>
       <div>
+        <div style={{ fontSize: 20, fontWeight: 600 }}>Level {playerLevel}</div>
         {playerLevel !== 10 ?
           <div>
             <div>XP</div>
-            <progress value={playerXP} max={XPNeededToNextLevel[playerLevel]}></progress>
+            <progress id="progress-xp" value={playerXP} max={XPNeededToNextLevel[playerLevel]}></progress>
             <div>{playerXP}/{XPNeededToNextLevel[playerLevel]} ({Math.round(playerXP / XPNeededToNextLevel[playerLevel] * 100)}%)</div>
           </div>
           : null}
-        <div>Level {playerLevel}</div>
       </div>
     </div >
   );
