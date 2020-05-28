@@ -26,7 +26,7 @@ function clamp(val, min, max) {
 const spells = [
   {
     id: 1,
-    cost: 5,
+    cost: 15,
     damage: 30,
     cooldown: 8,
     maxCharges: 3,
@@ -38,7 +38,7 @@ const spells = [
     id: 2,
     cost: 40,
     damage: 60,
-    cooldown: 6,
+    cooldown: 5,
     maxCharges: 1,
     castTime: 6,
     name: 'Pyroblast',
@@ -46,8 +46,8 @@ const spells = [
   },
   {
     id: 3,
-    cost: 40,
-    damage: 18,
+    cost: 45,
+    damage: 25,
     cooldown: 0,
     maxCharges: 1,
     name: 'Fireball',
@@ -159,7 +159,7 @@ const mobs = [
 ];
 
 function App() {
-  const incVal = 12;
+  const incVal = 11;
   const maxEnergy = 120;
   const FPS = 60;
   const frameTime = 1000 / FPS;
