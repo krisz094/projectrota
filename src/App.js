@@ -185,16 +185,16 @@ function App() {
   }
 
   function addXP(xp) {
-    if (playerLevel === 10) { return; }
-    if (playerXP + xp < XPNeededToNextLevel[playerLevel]) {
-      setPlayerXP(currXP => currXP + xp);
-    }
-    else {
-      const currentlyNeeded = XPNeededToNextLevel[playerLevel] - playerXP;
-      setPlayerLevel(lvl => lvl + 1);
-      addXP(xp - currentlyNeeded);
-    }
+    if (playerLevel === 10 || xp === 0) { return; }
+    setPlayerXP(currXP => currXP + xp);
   }
+
+  React.useEffect(() => {
+    if (playerXP > XPNeededToNextLevel[playerLevel]) {
+      setPlayerXP(xp => xp - XPNeededToNextLevel[playerLevel]);
+      setPlayerLevel(playerLevel => playerLevel + 1);
+    }
+  }, [playerXP, playerLevel]);
 
   function damageMob(amount, isCrit = false) {
     if (!mobAlive) {
@@ -228,9 +228,9 @@ function App() {
   }
 
   function stringFromCopper(copper) {
-    const gold = Math.round(copper / 10000);
+    const gold = Math.floor(copper / 10000);
     copper -= gold * 10000;
-    const silver = Math.round(copper / 100);
+    const silver = Math.floor(copper / 100);
     copper -= silver * 100;
     return `${gold} Gold ${silver} Silver ${copper} Copper`;
   }
@@ -264,7 +264,7 @@ function App() {
     <div className="App">
 
       <h1>DPS: {getDps()}</h1>
-<hr></hr>
+      <hr></hr>
       <div id="imgcont">
         <img
           style={!mobAlive ? { filter: 'grayscale(100%)' } : null}
@@ -279,7 +279,7 @@ function App() {
         <div><progress value={mobHp} max={mobMaxHp} style={{ backgroundColor: "red" }}></progress></div>
         <div>{mobHp}/{mobMaxHp}</div>
       </div>
-          <hr></hr>
+      <hr></hr>
       <div>
         <div>Mana</div>
         <div><progress value={energy} max={maxEnergy}></progress></div>
