@@ -1,3 +1,11 @@
+html, body, #root, .App {
+  height: 100%;
+}
+
+body {
+  user-select: none;
+}
+
 .App {
   text-align: center;
 }
@@ -59,6 +67,17 @@
   text-shadow: 0px 1px 2px black;
 }
 
+.spell-charges {
+  font-size: 18px;
+  font-weight: 700;
+  position: absolute;
+  bottom: 0px;
+  left: 4px;
+  color: white;
+  text-shadow: 0px 1px 2px black;
+  color: lightcoral;
+}
+
 .spell-cooldown-text {
   font-size: 34px;
   font-weight: 600;
@@ -73,10 +92,6 @@
   line-height: 54px;
 }
 
-#imgcont {
-  width: 300px;
-  margin:auto;
-}
 
 .attack-text {
   font-size: 30px;
