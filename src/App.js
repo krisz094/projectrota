@@ -11,6 +11,8 @@ import mechaImg from './mobs/mecha.jpg';
 import lizardImg from './mobs/lizard.jpg';
 import spiderImg from './mobs/spider.jpg';
 
+import VanCleefImg from './mobs/vancleef.jpg';
+
 import './App.css';
 
 function clamp(val, min, max) {
@@ -56,7 +58,7 @@ const spells = [
     cost: 0,
     damageMultiplier: 0,
     cooldown: 10,
-    maxCharges: 2,
+    maxCharges: 1,
     name: 'Evocation',
     imageURI: 'https://wow.zamimg.com/images/wow/icons/large/spell_nature_purge.jpg',
     grantsPlayerAuras: [1]
@@ -78,7 +80,7 @@ const auras = [
     id: 1,
     type: 'buff',
     effect: 'energyRegen',
-    effectStrength: 4,
+    effectStrength: 3.5,
     duration: 11,
     maxStacks: 3,
     imageURI: 'https://wow.zamimg.com/images/wow/icons/large/spell_nature_purge.jpg'
@@ -168,6 +170,13 @@ const mobs = [
     imageURI: rayImg,
     hpMultiplier: 1
   },
+  {
+    id: 11,
+    name: "Edwin VanCleef",
+    imageURI: VanCleefImg,
+    hpMultiplier: 10,
+    xpMultiplier: 30
+  }
 ];
 
 function auraReducer(currAuras, action) {
@@ -205,7 +214,7 @@ function App() {
   const FPS = 40;
   const frameTime = 1000 / FPS;
   const maxGCD = 1.5;
-  const keepAttacksForSec = 10;
+  const keepAttacksForSec = 20;
   const maxEnergy = 120;
 
   const [energy, setEnergy] = useState(maxEnergy);
@@ -226,10 +235,11 @@ function App() {
   const maxLevel = 99999;
   const baseEnergyRegen = 10;
 
-  const baseAttackVal = 20 * Math.pow(playerLevel, 0.8) * currentPlayerAuras.map(aura => aurasById[aura.id])
+  const baseAttackVal = 20 * Math.pow(playerLevel, 1.2) * currentPlayerAuras.map(aura => aurasById[aura.id])
     .filter(aura => aura.effect === "damageFactorIncrease")
     .reduce((p, c) => p + c.effectStrength, 1);
-  const baseMobHp = 150 * Math.pow(playerLevel, 0.8);
+
+  const baseMobHp = 150 * Math.pow(playerLevel, 1.2);
 
   const critChance = 10 + playerLevel;
 
@@ -259,10 +269,19 @@ function App() {
   function putNewRandomMob() {
     const mob = mobs[getRndInteger(0, mobs.length)];
 
+    putMob(mob.id);
+  }
+
+  function putMob(id) {
+    const mob = mobs.find(mob => mob.id === +id);
+
     const mobStrength = getRndInteger(80, 121);
 
-    const mobHp = Math.round(baseMobHp * mobStrength / 100);
-    const mobXp = Math.round(XPGainedCurrentLevel * mobStrength / 100);
+    const xpMultiplier = mob.xpMultiplier || 1;
+    const hpMultiplier = mob.hpMultiplier || 1;
+
+    const mobHp = Math.round(hpMultiplier * baseMobHp * mobStrength / 100);
+    const mobXp = Math.round(xpMultiplier * XPGainedCurrentLevel * mobStrength / 100);
 
     setMobMaxHp(mobHp);
     setMobHp(mobHp);
@@ -270,6 +289,12 @@ function App() {
     setMobAlive(true);
     setCurrMob(mob);
   }
+
+  useEffect(() => {
+    if (currMob) {
+      localStorage.setItem('lfm', currMob.id);
+    }
+  }, [currMob]);
 
   useEffect(() => {
     const loadedAppVer = localStorage.getItem('appVer');
@@ -341,7 +366,13 @@ function App() {
 
   useEffect(() => {
     if (gameIsSetUp) {
-      putNewRandomMob();
+      const loadLastFoughtMob = localStorage.getItem('lfm')
+      if (loadLastFoughtMob && !Number.isNaN(loadLastFoughtMob)) {
+        putMob(loadLastFoughtMob);
+      }
+      else {
+        putNewRandomMob();
+      }
     }
   }, [gameIsSetUp])
 
@@ -386,7 +417,7 @@ function App() {
       const timeDiff = (+new Date() - first.timestamp) / 1000;
 
       const sum = lastXSecAttacks.reduce((p, c) => p + c.dmg, 0);
-      return Math.round(sum / timeDiff * 100) / 100;
+      return Math.round(sum / timeDiff);
     }
   }
 
@@ -490,7 +521,8 @@ function App() {
       background: 'url(https://i.pinimg.com/originals/f7/7c/e8/f77ce86768566acf48b51008af7dd882.jpg)',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
-      backgroundAttachment: 'fixed'
+      backgroundAttachment: 'fixed',
+      backgroundSize: 'cover'
     }}>
 
       <div style={{
@@ -507,8 +539,8 @@ function App() {
             className="mob-img"
             style={{
               filter: !mobAlive ? 'grayscale(100%)' : null,
-              width: 250,
-              height: 250,
+              width: 200,
+              height: 200,
               objectFit: 'contain',
               marginRight: 10,
               borderRadius: 5,
@@ -593,7 +625,7 @@ function App() {
       </div>)
       }
 
-      <div style={{ fontSize: 26, fontWeight: 600 }}>DPS: {getDps()}</div>
+      <div style={{ fontSize: 26, fontWeight: 600, marginBottom: 5, color: 'cyan' }}> <span style={{ borderRadius: 5, padding: 3, background: 'rgba(0,0,0,0.5)' }}>DPS: {getDps()}</span></div>
 
 
       <div>
@@ -611,7 +643,7 @@ function App() {
           <div style={{ fontSize: 20, fontWeight: 600 }}>Level {playerLevel}</div>
           {playerLevel < maxLevel ?
             <div>
-              <progress id="progress-xp" style={{margin: '5px 0'}} value={playerXP} max={XPNeededToNextLevel}></progress>
+              <progress id="progress-xp" style={{ margin: '5px 0' }} value={playerXP} max={XPNeededToNextLevel}></progress>
               <div>XP: {playerXP}/{XPNeededToNextLevel} ({Math.round(playerXP / XPNeededToNextLevel * 100)}%)</div>
             </div>
             : null}
