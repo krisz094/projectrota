@@ -1,4 +1,6 @@
 import React, { useState, useEffect, useDebugValue, useReducer } from 'react';
+import useInterval from '@use-it/interval';
+
 import boarImg from './mobs/boar.jpg';
 import brownBearImg from './mobs/brownbear.jpg';
 import catImg from './mobs/cat.jpg';
@@ -210,14 +212,31 @@ function Menu() {
 
 }
 
+document.addEventListener("visibilitychange", function () {
+  if (!SETFPSFUN) { return; }
+  if (document.visibilityState === 'visible') {
+    SETFPSFUN(40);
+  } else {
+    SETFPSFUN(1);
+  }
+});
+
+let SETFPSFUN = null;
+
+function autoAttackMinsReducer(state, action) {
+  return clamp(state + action, 0, 300);
+}
+
 function App() {
-  const FPS = 40;
+  const [FPS, setFPS] = useState(40);
+  SETFPSFUN = setFPS;
   const frameTime = 1000 / FPS;
   const maxGCD = 1.5;
   const keepAttacksForSec = 20;
   const maxEnergy = 120;
 
   const [energy, setEnergy] = useState(maxEnergy);
+  const [autoAttackMins, dispatchAutoAttackMins] = useReducer(autoAttackMinsReducer, 0)
   const [mobHp, setMobHp] = useState(200);
   const [mobMaxHp, setMobMaxHp] = useState(200);
   const [mobAlive, setMobAlive] = useState(true);
@@ -232,7 +251,7 @@ function App() {
   const [currMob, setCurrMob] = useState(null);
   const [gameIsSetUp, setGameIsSetUp] = useState(false);
 
-  const maxLevel = 99999;
+  const maxLevel = 999999;
   const baseEnergyRegen = 10;
 
   const baseAttackVal = 20 * Math.pow(playerLevel, 1.2) * currentPlayerAuras.map(aura => aurasById[aura.id])
@@ -258,13 +277,40 @@ function App() {
 
   const actualEnergyRegen = getEnergyRegen();
 
-  useEffect(() => {
-    const interval = setInterval(() => {
+  useInterval(() => {
+    if (gameIsSetUp) {
+      decrementCooldownsBy(1 / FPS);
+      dispatchCurrentPlayerAuras({ type: "decrement", by: 1 / FPS });
+      setGCD(gcd => {
+        if (gcd <= 0) {
+          return 0;
+        }
+        else return gcd - 1 / FPS;
+      });
+      setLastXSecAttacks(lasts => {
+        const allowed = +new Date() - keepAttacksForSec * 1000;
+        const lastsnew = lasts.filter(attack => attack.timestamp > allowed);
+        lastsnew.forEach(attack => { attack.isCrit ? attack.y += 0.5 : attack.y += 2; attack.opacity -= 0.01 });
+        return lastsnew;
+      });
       setEnergy(energy => clamp(energy + actualEnergyRegen / FPS, 0, maxEnergy));
-    }, frameTime);
+    }
+  }, frameTime);
 
-    return () => clearInterval(interval);
-  }, [actualEnergyRegen]);
+  useInterval(() => {
+    if (autoAttackMins > 0) {
+
+      let isCrit = false;
+      let spellDmg = getRndInteger(90, 110) / 100 * baseAttackVal * 1.5;
+      if (getRndInteger(0, 100) < critChance) {
+        spellDmg *= 2;
+        isCrit = true;
+      }
+
+      damageMob(Math.floor(spellDmg), isCrit);
+      dispatchAutoAttackMins(-1 / 30);
+    }
+  }, 2000);
 
   function putNewRandomMob() {
     const mob = mobs[getRndInteger(0, mobs.length)];
@@ -314,9 +360,14 @@ function App() {
         setPlayerXP(+loadxp);
       }
 
-      const loadlevel = localStorage.getItem('l')
+      const loadlevel = localStorage.getItem('l');
       if (loadlevel && !Number.isNaN(+loadlevel)) {
         setPlayerLevel(+loadlevel);
+      }
+
+      const loadAutoAttackMins = localStorage.getItem('aam');
+      if (loadAutoAttackMins && !Number.isNaN(+loadAutoAttackMins)) {
+        dispatchAutoAttackMins(+loadAutoAttackMins);
       }
     }
     else {
@@ -333,23 +384,6 @@ function App() {
 
     setCooldowns(cds);
 
-    const interval = setInterval(() => {
-      decrementCooldownsBy(1 / FPS);
-      dispatchCurrentPlayerAuras({ type: "decrement", by: 1 / FPS });
-      setGCD(gcd => {
-        if (gcd <= 0) {
-          return 0;
-        }
-        else return gcd - 1 / FPS;
-      });
-      setLastXSecAttacks(lasts => {
-        const allowed = +new Date() - keepAttacksForSec * 1000;
-        const lastsnew = lasts.filter(attack => attack.timestamp > allowed);
-        lastsnew.forEach(attack => { attack.isCrit ? attack.y += 0.5 : attack.y += 2; attack.opacity -= 0.01 });
-        return lastsnew;
-      });
-    }, frameTime);
-
     document.addEventListener('keydown', e => {
       if (+e.key >= 1 && +e.key <= 5) {
         const elem = document.getElementById('spell_' + e.key);
@@ -360,8 +394,6 @@ function App() {
     });
 
     setGameIsSetUp(true);
-
-    return () => { clearInterval(interval); }
   }, []);
 
   useEffect(() => {
@@ -397,6 +429,10 @@ function App() {
     localStorage.setItem('l', playerLevel);
     localStorage.setItem('x', playerXP);
   }, [playerXP, playerLevel]);
+
+  useEffect(() => {
+    localStorage.setItem('aam', autoAttackMins);
+  }, [autoAttackMins]);
 
   function addToDps(amount, isCrit = false) {
     if (amount === 0) { return; }
@@ -493,11 +529,11 @@ function App() {
   }
 
 
+
   function castSpell(spell) {
     setGCD(maxGCD);
 
     let spellDmg = Math.round(baseAttackVal * spell.damageMultiplier * getRndInteger(80, 120) / 100);
-
     let isCrit = false;
     if (getRndInteger(0, 100) < critChance) {
       spellDmg *= 2;
@@ -509,6 +545,10 @@ function App() {
 
     if ('grantsPlayerAuras' in spell) {
       dispatchCurrentPlayerAuras({ type: "add", auraIdsToAdd: spell.grantsPlayerAuras });
+    }
+
+    if (spell.damageMultiplier != 0) {
+      dispatchAutoAttackMins(2);
     }
   }
 
@@ -630,6 +670,15 @@ function App() {
 
       <div>
         <div style={{ background: 'rgba(0,0,0,0.5)', color: 'white', padding: 5 }}>
+
+          <div>
+            {autoAttackMins > 0 ?
+              <b>Auto attacking for <span style={{ fontSize: 20 }}>{Math.ceil(autoAttackMins)}</span> minutes.</b> :
+              <b>Auto attacking paused.</b>}<br/>
+               (Max 300 minutes. Increased by 2 every time you hit with a damaging spell. Only active when game is running.)
+            <br /><br />
+          </div>
+
           <b>Money</b>: {stringFromCopper(copper)} | <b>Crit chance</b>: {critChance}% | <b>Energy regen</b>: {actualEnergyRegen}/sec
         </div>
 
