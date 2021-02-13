@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useDebugValue, useReducer } from 'react';
+import React, { useState, useEffect, useReducer } from 'react';
 import useInterval from '@use-it/interval';
 
 import boarImg from './mobs/boar.jpg';
@@ -14,6 +14,8 @@ import lizardImg from './mobs/lizard.jpg';
 import spiderImg from './mobs/spider.jpg';
 
 import VanCleefImg from './mobs/vancleef.jpg';
+
+import explo from './anim/explo.gif';
 
 import './App.css';
 
@@ -208,10 +210,6 @@ function auraReducer(currAuras, action) {
   }
 }
 
-function Menu() {
-
-}
-
 document.addEventListener("visibilitychange", function () {
   if (!SETFPSFUN) { return; }
   if (document.visibilityState === 'visible') {
@@ -227,16 +225,42 @@ function autoAttackMinsReducer(state, action) {
   return clamp(state + action, 0, 300);
 }
 
+function logReducer(state, action) {
+  return state;
+}
+
+function animReducer(state, action) {
+  if (action.type === "remove_all") {
+    return [];
+  }
+
+  if (action.type === "decrement") {
+    return state.map(anim => {
+      const newAnim = Object.assign({}, anim);
+      newAnim.duration -= action.payload;
+      return newAnim;
+    })
+      .filter(anim => anim.duration > 0);
+  }
+  else if (action.type === "add") {
+    state.push(action.payload);
+  }
+
+  return state;
+}
+
+var lastDrawnTime = performance.now();
+
 function App() {
   const [FPS, setFPS] = useState(40);
   SETFPSFUN = setFPS;
   const frameTime = 1000 / FPS;
-  const maxGCD = 1.5;
+  const maxGCD = 1.2;
   const keepAttacksForSec = 20;
   const maxEnergy = 120;
 
   const [energy, setEnergy] = useState(maxEnergy);
-  const [autoAttackMins, dispatchAutoAttackMins] = useReducer(autoAttackMinsReducer, 0)
+  const [autoAttackMins, dispatchAutoAttackMins] = useReducer(autoAttackMinsReducer, 0);
   const [mobHp, setMobHp] = useState(200);
   const [mobMaxHp, setMobMaxHp] = useState(200);
   const [mobAlive, setMobAlive] = useState(true);
@@ -249,20 +273,22 @@ function App() {
   const [playerLevel, setPlayerLevel] = useState(1);
   const [GCD, setGCD] = useState(0);
   const [currMob, setCurrMob] = useState(null);
+  const [runningAnimations, dispatchAnims] = useReducer(animReducer, []);
+  const [logTexts, dispatchLogTexts] = useReducer(logReducer, {});
   const [gameIsSetUp, setGameIsSetUp] = useState(false);
 
   const maxLevel = 999999;
   const baseEnergyRegen = 10;
 
-  const baseAttackVal = 20 * Math.pow(playerLevel, 1.2) * currentPlayerAuras.map(aura => aurasById[aura.id])
+  const baseAttackVal = 10 * Math.pow(playerLevel, 1.2) * currentPlayerAuras.map(aura => aurasById[aura.id])
     .filter(aura => aura.effect === "damageFactorIncrease")
     .reduce((p, c) => p + c.effectStrength, 1);
 
   const baseMobHp = 150 * Math.pow(playerLevel, 1.2);
 
-  const critChance = 10 + playerLevel;
+  const critChance = Math.min(10 + playerLevel, 60);
 
-  const baseXpGain = 200;
+  const baseXpGain = 400;
   const baseXpNeed = 800;
   const xpGainExp = 0.6;
   const xpNeedExp = 1.3;
@@ -279,21 +305,29 @@ function App() {
 
   useInterval(() => {
     if (gameIsSetUp) {
-      decrementCooldownsBy(1 / FPS);
-      dispatchCurrentPlayerAuras({ type: "decrement", by: 1 / FPS });
+      const nowTime = performance.now();
+      const realFrameTimeMS = nowTime - lastDrawnTime;
+      const realFrameTimeS = realFrameTimeMS / 1000;
+
+      decrementCooldownsBy(realFrameTimeS);
+      dispatchCurrentPlayerAuras({ type: "decrement", by: realFrameTimeS });
+      dispatchAnims({ type: "decrement", payload: realFrameTimeMS });
       setGCD(gcd => {
         if (gcd <= 0) {
           return 0;
         }
-        else return gcd - 1 / FPS;
+        else return gcd - realFrameTimeS;
       });
       setLastXSecAttacks(lasts => {
         const allowed = +new Date() - keepAttacksForSec * 1000;
-        const lastsnew = lasts.filter(attack => attack.timestamp > allowed);
-        lastsnew.forEach(attack => { attack.isCrit ? attack.y += 0.5 : attack.y += 2; attack.opacity -= 0.01 });
+        const lastsnew = lasts.filter(attack => attack.timestamp > allowed).map(atk => Object.assign({}, atk));
+        const fpsmod = 40 / FPS;
+        lastsnew.forEach(attack => { attack.isCrit ? attack.y += 0.5 * fpsmod : attack.y += 2 * fpsmod; attack.opacity -= 0.01 * fpsmod });
         return lastsnew;
       });
       setEnergy(energy => clamp(energy + actualEnergyRegen / FPS, 0, maxEnergy));
+
+      lastDrawnTime = nowTime;
     }
   }, frameTime);
 
@@ -308,6 +342,8 @@ function App() {
       }
 
       damageMob(Math.floor(spellDmg), isCrit);
+      dispatchAnims({ type: "add", payload: { duration: 1200, x: Math.random() * 100, y: Math.random() * 100, img: explo, started: +new Date() } })
+
       dispatchAutoAttackMins(-1 / 30);
     }
   }, 2000);
@@ -413,7 +449,7 @@ function App() {
       setCopper(copper => Math.floor(copper + XPGainedCurrentLevel / 50 * getRndInteger(80, 120) / 100));
       setTimeout(() => {
         putNewRandomMob();
-      }, 1000)
+      }, 200)
     }
   }, [mobAlive]);
 
@@ -467,7 +503,7 @@ function App() {
       setPlayerXP(xp => xp - XPNeededToNextLevel);
       setPlayerLevel(playerLevel => playerLevel + 1);
     }
-  }, [playerXP, playerLevel]);
+  }, [playerXP, playerLevel, XPNeededToNextLevel]);
 
   function damageMob(amount, isCrit = false) {
     if (!mobAlive) {
@@ -475,6 +511,7 @@ function App() {
     }
     if (mobHp - amount <= 0) {
       setMobAlive(false);
+      dispatchAnims({ type: "remove_all" });
       addXP(mobXP);
     }
 
@@ -540,6 +577,7 @@ function App() {
       isCrit = true;
     }
     damageMob(spellDmg, isCrit);
+    dispatchAnims({ type: "add", payload: { duration: 1200, x: Math.random() * 100, y: Math.random() * 100, img: explo, started: +new Date() } })
     lowerEnergy(spell.cost);
     setUsedCooldownFor(spell);
 
@@ -547,7 +585,7 @@ function App() {
       dispatchCurrentPlayerAuras({ type: "add", auraIdsToAdd: spell.grantsPlayerAuras });
     }
 
-    if (spell.damageMultiplier != 0) {
+    if (spell.damageMultiplier !== 0) {
       dispatchAutoAttackMins(2);
     }
   }
@@ -558,7 +596,7 @@ function App() {
 
   return gameIsSetUp ? (
     <div className="App" style={{
-      background: 'url(https://i.pinimg.com/originals/f7/7c/e8/f77ce86768566acf48b51008af7dd882.jpg)',
+      background: 'url("https://i.pinimg.com/originals/f7/7c/e8/f77ce86768566acf48b51008af7dd882.jpg")',
       backgroundPosition: 'center',
       backgroundRepeat: 'no-repeat',
       backgroundAttachment: 'fixed',
@@ -575,22 +613,37 @@ function App() {
         boxShadow: '0 0 5px 0px #0000004a'
       }}>
         <div>
-          {currMob && <img
+          {currMob && <div
             className="mob-img"
             style={{
               filter: !mobAlive ? 'grayscale(100%)' : null,
               width: 200,
               height: 200,
-              objectFit: 'contain',
               marginRight: 10,
               borderRadius: 5,
-              boxShadow: '0 2px 5px 0px #bdbdbd'
-            }}
-            src={currMob.imageURI}></img>}
+              boxShadow: '0 2px 5px 0px #bdbdbd',
+              background: `url("${currMob.imageURI}")`,
+              position: 'relative'
+            }}>
+
+            {false && runningAnimations.map(anim => <img
+              alt="anim"
+              src={anim.img}
+              style={{
+                width: 100,
+                height: 100,
+                objectFit: 'contain',
+                position: 'absolute',
+                left: anim.x,
+                top: anim.y
+              }}
+            ></img>)}
+
+          </div>}
 
           {lastXSecAttacks.map(attack =>
             <span key={attack.timestamp} className="attack-text" style={{
-              top: 250 - attack.y,
+              top: 190 - attack.y,
               opacity: attack.opacity,
               fontSize: attack.isCrit ? 50 : null,
               color: attack.isCrit ? "darkorange" : null
@@ -615,7 +668,7 @@ function App() {
               width: 40,
               height: 40,
               marginRight: 5,
-              background: `url(${aurasById[aura.id].imageURI})`,
+              background: `url("${aurasById[aura.id].imageURI}")`,
               backgroundSize: 'contain'
             }}>
             <div className="spell-cooldown-text" style={{ fontSize: 18, top: -6 }}>{Math.round(aura.duration * 10) / 10}</div>
@@ -638,7 +691,7 @@ function App() {
         id={"spell_" + hotkeys[idx]}
         className="spell-btn"
         onClick={isSpellCastable(spell) ? () => { castSpell(spell) } : null}
-        style={{ backgroundImage: `url(${spell.imageURI})`, filter: energy < spell.cost ? 'saturate(0.18)' : null }}
+        style={{ backgroundImage: `url("${spell.imageURI}")`, filter: energy < spell.cost ? 'saturate(0.18)' : null }}
       >
 
         {(cooldowns[spell.id].cooldown > 0 || GCD > 0) && <div className="spell-cooldown-overlay" style={{
@@ -646,14 +699,14 @@ function App() {
           left: 0,
           right: 0,
           bottom: 0,
-          top: 60 - (GCD > cooldowns[spell.id].cooldown || cooldowns[spell.id].charges > 0 && GCD != 0 ? GCD / maxGCD : cooldowns[spell.id].cooldown / spell.cooldown) * 60,
+          top: 60 - (GCD > cooldowns[spell.id].cooldown || (cooldowns[spell.id].charges > 0 && GCD !== 0) ? GCD / maxGCD : cooldowns[spell.id].cooldown / spell.cooldown) * 60,
           background: "black",
           opacity: 0.5
         }}>
 
         </div>}
 
-        {cooldowns[spell.id].cooldown > 0 && cooldowns[spell.id].charges == 0 && <span className="spell-cooldown-text" style={{
+        {cooldowns[spell.id].cooldown > 0 && cooldowns[spell.id].charges === 0 && <span className="spell-cooldown-text" style={{
           fontSize: cooldowns[spell.id].cooldown > 2 ? '20px' : null
         }}>{Math.ceil(cooldowns[spell.id].cooldown * 10) / 10}</span>}
 
@@ -674,7 +727,7 @@ function App() {
           <div>
             {autoAttackMins > 0 ?
               <b>Auto attacking for <span style={{ fontSize: 20 }}>{Math.ceil(autoAttackMins)}</span> minutes.</b> :
-              <b>Auto attacking paused.</b>}<br/>
+              <b>Auto attacking paused.</b>}<br />
                (Max 300 minutes. Increased by 2 every time you hit with a damaging spell. Only active when game is running.)
             <br /><br />
           </div>
